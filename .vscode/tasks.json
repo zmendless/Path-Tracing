@@ -1,0 +1,15 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Build and Run raylib",
+            "type": "shell",
+            "command": "clang main.c -o main.exe -O3 -Wall -Wextra $(pkg-config --cflags raylib) $(pkg-config --libs raylib) -lm -lX11 -lGL -lpthread -ldl && ./main.exe",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": ["$gcc"]
+        }
+    ]
+}
