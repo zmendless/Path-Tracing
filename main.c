@@ -1,10 +1,12 @@
 #include "raylib.h"
+#include <stdio.h>
+#include <sys/stat.h>
 
-#define SCREEN_WIDTH 1200
-#define SCREEN_HEIGHT 1000
+#define SCREEN_WIDTH 800
+#define SCREEN_HEIGHT 800
 
-#define TILES_X 4
-#define TILES_Y 4
+#define TILES_X 2
+#define TILES_Y 2
 #define TILE_WIDTH (SCREEN_WIDTH / TILES_X)
 #define TILE_HEIGHT (SCREEN_HEIGHT / TILES_Y)
 
@@ -29,7 +31,23 @@ int main(void)
     SetShaderValue(shader, mouseLoc, &mouse, SHADER_UNIFORM_VEC2);
     SetShaderValue(shader, timeLoc, &time, SHADER_UNIFORM_FLOAT);
 
+    mkdir("renders", 0777);
+
+    int imageIndex = 0;
+    char filename[128];
+
+    while (1)
+    {
+        snprintf(filename, sizeof(filename), "renders/render_%04d.png", imageIndex);
+
+        if (!FileExists(filename))
+            break;
+
+        imageIndex++;
+    }
+
     int tile = 0;
+    double renderStart = GetTime();
 
     while (!WindowShouldClose())
     {
@@ -38,35 +56,48 @@ int main(void)
             int tileX = tile % TILES_X;
             int tileY = tile / TILES_X;
 
-            Vector2 tileOffset = {(float)(tileX * TILE_WIDTH),(float)(tileY * TILE_HEIGHT)};
+            Vector2 tileOffset = {
+                (float)(tileX * TILE_WIDTH),
+                (float)(tileY * TILE_HEIGHT)
+            };
 
-            SetShaderValue(shader,tileOffsetLoc,&tileOffset,SHADER_UNIFORM_VEC2);
+            SetShaderValue(shader, tileOffsetLoc, &tileOffset, SHADER_UNIFORM_VEC2);
 
             BeginTextureMode(target);
 
             BeginShaderMode(shader);
 
             DrawRectangle(tileX * TILE_WIDTH,tileY * TILE_HEIGHT,TILE_WIDTH,TILE_HEIGHT,WHITE);
+
             EndShaderMode();
 
             EndTextureMode();
 
             tile++;
+
             if (tile == TILES_X * TILES_Y)
             {
+                double renderTime = GetTime() - renderStart;
+
+                printf("Rendering finished in %.3f seconds\n", renderTime);
+
                 Image image = LoadImageFromTexture(target.texture);
+
                 ImageFlipVertical(&image);
-                ExportImage(image, "pathtracer.png");
+
+                ExportImage(image, filename);
+
+                printf("Saved: %s\n", filename);
+
                 UnloadImage(image);
             }
-
         }
 
         BeginDrawing();
 
-            ClearBackground(BLACK);
+        ClearBackground(BLACK);
 
-            DrawTextureRec(target.texture,(Rectangle){0,0,(float)target.texture.width,-(float)target.texture.height},(Vector2){ 0, 0 },WHITE);
+        DrawTextureRec(target.texture,(Rectangle){0,0,(float)target.texture.width,-(float)target.texture.height},(Vector2){ 0, 0 },WHITE);
 
         EndDrawing();
     }
