@@ -200,7 +200,7 @@ int main(void)
         if (wheel != 0.0f)
         {
             cam.distance -= wheel * 0.5f;
-            if (cam.distance < 1.5f)  cam.distance = 1.5f;
+            if (cam.distance < 0.01f)  cam.distance = 0.01f;
             if (cam.distance > 25.0f) cam.distance = 25.0f;
             cameraChanged = true;
         }
@@ -275,7 +275,7 @@ int main(void)
             EndShaderMode();
 
             DrawFPS(10, 10);
-            DrawText(TextFormat("Accumulated samples: %d", sampleCount), 10, 34, 20, RAYWHITE);
+            DrawText(TextFormat("%d", sampleCount), 10, 34, 20, RAYWHITE);
         EndDrawing();
     }
 

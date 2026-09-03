@@ -5,16 +5,13 @@ in vec4 fragColor;
 
 out vec4 finalColor;
 
-uniform sampler2D texture0; // raylib's default sampler name; bound to the accum RenderTexture2D
+uniform sampler2D texture0;
 uniform vec2 u_resolution;
 uniform float u_sampleCount;
 
 const float EXPOSURE = 1.05;
 
 void main() {
-    // texture0 holds the SUM of all accumulated samples (float render target,
-    // additive-blended). Divide by how many samples have landed in it so far
-    // to get the running average -> this is the actual "accumulation" step.
     vec3 col = texture(texture0, fragTexCoord).rgb / max(u_sampleCount, 1.0);
 
     col *= EXPOSURE;

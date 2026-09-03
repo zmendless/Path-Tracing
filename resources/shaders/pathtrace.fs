@@ -102,7 +102,7 @@ float shadow(vec3 ro, vec3 rd, float maxT) {
     float t = 0.01;
     float res = 1.0;
 
-    for (int i = 0; i < 10; i++) {
+    for (int i = 0; i < 20; i++) {
         float d = map(ro + rd * t);
 
         if (d < 0.001)
@@ -230,19 +230,6 @@ float fbm(vec3 p) {
     return v;
 }
 
-vec3 bumpNormal(vec3 p, vec3 n, float scale, float strength) {
-    float e = 0.02;
-    float f = fbm(p * scale);
-
-    vec3 g = vec3(
-        fbm((p + vec3(e, 0.0, 0.0)) * scale) - f,
-        fbm((p + vec3(0.0, e, 0.0)) * scale) - f,
-        fbm((p + vec3(0.0, 0.0, e)) * scale) - f
-    ) / e;
-
-    return normalize(n - g * strength);
-}
-
 vec3 ray(vec3 ro, vec3 rd, vec2 seed) {
     vec3 color = vec3(0.0);
     vec3 throughput = vec3(1.0);
@@ -310,7 +297,6 @@ vec3 ray(vec3 ro, vec3 rd, vec2 seed) {
                     float grout = fbm(p * 8.0);
                     surfaceColor = mix(vec3(0.85), vec3(0.1), checker);
                     surfaceColor *= 0.85 + 0.3 * grout;
-                    normal = bumpNormal(p, normal, 6.0, 0.06);
 
                     float fFloor = fresnel(rd, normal, 0.04);
                     if (random(p.xz + seed + float(bounce) * 3.3) < fFloor * 0.5) {
@@ -324,27 +310,22 @@ vec3 ray(vec3 ro, vec3 rd, vec2 seed) {
                     float n = fbm(p * 1.0);
                     float n2 = fbm(p * 6.0);
                     surfaceColor = vec3(0.6745, 0.1529, 0.1529) * (0.6 + 0.3 * n + 0.15 * n2);
-                    normal = bumpNormal(p, normal, 5.0, 0.05);
                 } else if (material.y == 4.0) {
                     float n = fbm(p * 1.0);
                     float n2 = fbm(p * 6.0);
                     surfaceColor = vec3(0.05) * (0.6 + 0.3 * n + 0.15 * n2);
-                    normal = bumpNormal(p, normal, 5.0, 0.05);
                 } else if (material.y == 5.0) {
                     float n = fbm(p * 1.0);
                     float n2 = fbm(p * 6.0);
                     surfaceColor = vec3(0.2, 0.4, 1.0) * (0.6 + 0.3 * n + 0.15 * n2);
-                    normal = bumpNormal(p, normal, 5.0, 0.05);
                 } else if (material.y == 6.0) {
                     float n = fbm(p * 1.0);
                     float n2 = fbm(p * 6.0);
                     surfaceColor = vec3(0.2941, 1.0, 0.2) * (0.6 + 0.3 * n + 0.15 * n2);
-                    normal = bumpNormal(p, normal, 5.0, 0.05);
                 } else if (material.y == 7.0) {
                     float n = fbm(p * 1.0);
                     float n2 = fbm(p * 6.0);
                     surfaceColor = vec3(1.0) * (0.95 + 0.3 * n + 0.15 * n2);
-                    normal = bumpNormal(p, normal, 5.0, 0.05);
                 } else if (material.y == 8.0) {
                     surfaceColor = vec3(1.0);
                 } else if (material.y == 9.0) {
@@ -397,23 +378,14 @@ vec3 ray(vec3 ro, vec3 rd, vec2 seed) {
 }
 
 void main() {
-    // One new sample per pixel per frame. u_frame (which keeps increasing every
-    // frame the camera stays still) drives the random seed so every accumulated
-    // frame explores a different set of light/bounce directions -> the sum
-    // converges to a clean render the longer the camera is left still.
     vec2 seed = gl_FragCoord.xy + float(u_frame) * 13.37 + fract(u_time) * 0.001;
 
     vec2 offset = vec2(random(seed), random(seed + 100.0)) - 0.5;
     vec2 sampleUV = ((gl_FragCoord.xy + offset) * 2.0 - u_resolution.xy) / u_resolution.y;
 
-    // Build the camera ray from the orbit-camera basis supplied by the CPU side,
-    // instead of the fixed vec3(sampleUV, 1.4) direction from the original shader.
     vec3 rd = normalize(u_forward * u_fov + u_right * sampleUV.x + u_up * sampleUV.y);
 
     vec3 col = ray(u_ro, rd, seed);
 
-    // Written with alpha = 1 and blended additively (GL_ONE, GL_ONE) into a
-    // float accumulation buffer on the CPU side, so this is a SUM of samples,
-    // not a final pixel color. The display shader divides by u_sampleCount.
     finalColor = vec4(col, 1.0);
 }
