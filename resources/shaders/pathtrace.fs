@@ -1,17 +1,25 @@
-#ifdef GL_ES
-precision highp float;
-#endif
+#version 330
 
-uniform vec2 u_mouse;
+in vec2 fragTexCoord;
+in vec4 fragColor;
+
+out vec4 finalColor;
+
 uniform vec2 u_resolution;
+uniform int u_frame;
 uniform float u_time;
+
+uniform vec3 u_ro;
+uniform vec3 u_forward;
+uniform vec3 u_right;
+uniform vec3 u_up;
+uniform float u_fov;
 
 const mat2 ROT30 = mat2(0.8660254, -0.5, 0.5, 0.8660254);
 const mat2 ROT80 = mat2(0.1736482, -0.9848077, 0.9848077, 0.1736482);
 
-const int MAX_BOUNCES = 12;
-const int RR_START_BOUNCE = 3;
-const float EXPOSURE = 1.05;
+const int MAX_BOUNCES = 8;
+const int RR_START_BOUNCE = 6;
 
 const float COLOR_BLEED_SATURATION = 1.5;
 const float COLOR_BLEED_STRENGTH   = 1.18;
@@ -62,13 +70,14 @@ vec2 mapMaterial(vec3 p) {
     res = opU(res, vec2(sdBox(p - vec3(0.0, 4.0, -1.0), vec3(1.0, 0.01, 0.5)), 9.0));
     res = opU(res, vec2(sdBox(p - vec3(.0, 1.0, 5.0), vec3(3.0, 3.0, 0.01)), 1.0));
 
-    res = opU(res, vec2(sdSphere(p - vec3(2, -0.1, 2), 2.1), 5.0));
+    res = opU(res, vec2(sdSphere(p - vec3(2, -0.1, 2), 2.1), 6.0));
     res = opU(res, vec2(sdSphere(p - vec3(0.5, -1.0, -0.6), 1.0), 0.0));
+
     res = opU(res, vec2(sdPlane(p - vec3(0, 1, 0), vec3(0, 1, 0), 3.0), 2.0));   // floor
     res = opU(res, vec2(sdPlane(p - vec3(0, 1, 0), vec3(0, 0, -1), 5.0), 7.0)); // back
     res = opU(res, vec2(sdPlane(p - vec3(0, 1, 0), vec3(0, 0, 1), 7.0), 7.0));  // front
     res = opU(res, vec2(sdPlane(p - vec3(0, 1, 0), vec3(1, 0, 0), 5.0), 3.0));   // right
-    res = opU(res, vec2(sdPlane(p - vec3(0, 1, 0), vec3(-1, 0, 0), 5.0), 6.0));  // left
+    res = opU(res, vec2(sdPlane(p - vec3(0, 1, 0), vec3(-1, 0, 0), 5.0), 5.0));  // left
     res = opU(res, vec2(sdPlane(p - vec3(0, 1, 0), vec3(0, -1, 0), 5.0), 7.0));  // ceiling
 
     return res;
@@ -93,7 +102,7 @@ float shadow(vec3 ro, vec3 rd, float maxT) {
     float t = 0.01;
     float res = 1.0;
 
-    for (int i = 0; i < 20; i++) {
+    for (int i = 0; i < 10; i++) {
         float d = map(ro + rd * t);
 
         if (d < 0.001)
@@ -243,7 +252,8 @@ vec3 ray(vec3 ro, vec3 rd, vec2 seed) {
 
         for (int i = 0; i < 100; i++) {
             vec3 p = ro + rd * t;
-            float d = map(p);
+            vec2 hit = mapMaterial(p);
+            float d = hit.x;
             float ad = abs(d);
             if (ad < 0.001) {
                 vec3 normal = getNormal(p);
@@ -264,16 +274,16 @@ vec3 ray(vec3 ro, vec3 rd, vec2 seed) {
                 float s = shadow(p, light, lightDist);
                 float ao = ambientOcclusion(p, normal);
 
-                vec2 material = mapMaterial(p);
+                vec2 material = hit;
                 vec3 surfaceColor;
 
                 // glass
                 if (material.y == 0.0) {
-                    float eta = 1.0 / 1.5;
+                    float eta = 1.0 / 2.0;
                     vec3 n2 = normal;
                     if (dot(rd, normal) > 0.0) {
                         n2 = -normal;
-                        eta = 1.5;
+                        eta = 2.0;
                     }
 
                     float f = fresnel(rd, n2, 0.04);
@@ -289,30 +299,13 @@ vec3 ray(vec3 ro, vec3 rd, vec2 seed) {
                     }
                     break;
                 }
-
-                // mirror
                 if (material.y == 1.0) {
-                    float eta = 1.0 / 1.5;
-
-                    if (dot(rd, normal) > 0.0) {
-                        normal = -normal;
-                        eta = 1.5;
-                    }
-
-                    float f = fresnel(rd, normal, 0.95);
-
-                    if (random(p.xz + seed + float(bounce)) < f) {
-                        rd = reflect(rd, normal);
-                    } else {
-                        rd = refract(rd, normal, eta);
-                    }
-
+                    rd = reflect(rd, normal);
                     ro = p + normal * 0.001;
+
                     break;
                 }
-
                 if (material.y == 2.0) {
-                    // polished stone
                     float checker = mod(floor(p.x) + floor(p.z), 2.0);
                     float grout = fbm(p * 8.0);
                     surfaceColor = mix(vec3(0.85), vec3(0.1), checker);
@@ -360,7 +353,7 @@ vec3 ray(vec3 ro, vec3 rd, vec2 seed) {
                     return color;
                 }
 
-                vec3 lightColor = vec3(1.3, 1.0, 0.9);
+                vec3 lightColor = vec3(1.1, 1.0, 0.9);
 
                 float roughness = (material.y == 2.0) ? 0.15 : 0.45;
                 float spec = ggxSpecular(normal, viewDir, light, roughness, 0.04);
@@ -404,43 +397,23 @@ vec3 ray(vec3 ro, vec3 rd, vec2 seed) {
 }
 
 void main() {
-    vec2 uv = (gl_FragCoord.xy * 2.0 - u_resolution.xy) / u_resolution.x;
+    // One new sample per pixel per frame. u_frame (which keeps increasing every
+    // frame the camera stays still) drives the random seed so every accumulated
+    // frame explores a different set of light/bounce directions -> the sum
+    // converges to a clean render the longer the camera is left still.
+    vec2 seed = gl_FragCoord.xy + float(u_frame) * 13.37 + fract(u_time) * 0.001;
 
-    vec3 ro = vec3(0.0, 0.5, -6.0);
+    vec2 offset = vec2(random(seed), random(seed + 100.0)) - 0.5;
+    vec2 sampleUV = ((gl_FragCoord.xy + offset) * 2.0 - u_resolution.xy) / u_resolution.y;
 
-    vec3 col = vec3(0.0);
+    // Build the camera ray from the orbit-camera basis supplied by the CPU side,
+    // instead of the fixed vec3(sampleUV, 1.4) direction from the original shader.
+    vec3 rd = normalize(u_forward * u_fov + u_right * sampleUV.x + u_up * sampleUV.y);
 
-    const int SAMPLES = 128;
-    for (int i = 0; i < SAMPLES; i++) {
-        vec2 seed = gl_FragCoord.xy + float(i) * 3.117 + u_time * 0.0001;
+    vec3 col = ray(u_ro, rd, seed);
 
-        vec2 offset = vec2(random(seed), random(seed + 100.0)) - 0.5;
-
-        vec2 sampleUV = ((gl_FragCoord.xy + offset) * 2.0 - u_resolution.xy) / u_resolution.y;
-        vec3 sampleRd = normalize(vec3(sampleUV, 1.3));
-
-        vec3 lensJitter = vec3(random(seed + 200.0) - 0.5, random(seed + 300.0) - 0.5, 0.0) * 0.03;
-
-        col += ray(ro + lensJitter, sampleRd, seed);
-    }
-
-    col /= float(SAMPLES);
-    col *= EXPOSURE;
-
-    vec3 bloom = smoothstep(0.8, 2.0, col) * 0.3;
-    col += bloom;
-
-    col = col / (col + 1.0);
-    col = (col * (2.51 * col + 0.03)) / (col * (2.43 * col + 0.59) + 0.14) * 1.5;
-
-    float vig = 1.0 - 0.2 * dot(uv, uv);
-    col *= vig;
-
-    col += (random(gl_FragCoord.xy * 0.01) - 0.5) * 0.002;
-
-    float ca = 0.05 * dot(uv, uv);
-    col.r *= 1.0 + ca;
-    col.b *= 1.0 - ca;
-
-    gl_FragColor = vec4(col, 1.0);
+    // Written with alpha = 1 and blended additively (GL_ONE, GL_ONE) into a
+    // float accumulation buffer on the CPU side, so this is a SUM of samples,
+    // not a final pixel color. The display shader divides by u_sampleCount.
+    finalColor = vec4(col, 1.0);
 }
