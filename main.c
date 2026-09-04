@@ -1,30 +1,3 @@
-/*******************************************************************************
- * Accumulation-based path tracer, C + raylib
- * -------------------------------------------------------------------------
- * Converted from a Shadertoy-style GLSL path tracer that took 64 samples in
- * a single fragment shader invocation every frame.
- *
- * Here the same path tracer runs ONE sample per pixel per frame. That single
- * noisy sample is added into a floating-point accumulation buffer (additive
- * blending), and a second "display" pass divides the running sum by the
- * number of frames accumulated so far to show the converging average.
- *
- * As long as the camera doesn't move, the image keeps getting cleaner every
- * frame (classic progressive/accumulation path tracing). Moving the camera
- * (drag mouse / scroll wheel) resets the accumulation buffer and starts over.
- *
- * Build (Linux/macOS, raylib installed via package manager or built from
- * source):
- *     gcc main.c -o pathtracer -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
- *
- * Build (using a local raylib build, adjust paths as needed):
- *     gcc main.c -o pathtracer -I/path/to/raylib/src -L/path/to/raylib/src \
- *         -lraylib -lGL -lm -lpthread -ldl -lrt -lX11
- *
- * Run from the project root so the shader paths (resources/shaders/...)
- * resolve correctly.
- ******************************************************************************/
-
 #include "raylib.h"
 #include "raymath.h"
 #include "rlgl.h"
@@ -32,14 +5,6 @@
 #include <math.h>
 #include <stdio.h>
 
-//------------------------------------------------------------------------------
-// Float render texture helpers
-//
-// raylib's LoadRenderTexture() gives you an 8-bit-per-channel target, which
-// isn't enough precision to sum hundreds/thousands of accumulated samples
-// without banding. We build a float (R32G32B32A32) render texture manually
-// via rlgl instead.
-//------------------------------------------------------------------------------
 static RenderTexture2D LoadRenderTextureFloat(int width, int height)
 {
     RenderTexture2D target = { 0 };
@@ -81,23 +46,18 @@ static void UnloadRenderTextureFloat(RenderTexture2D target)
     if (target.id > 0) rlUnloadFramebuffer(target.id);
 }
 
-//------------------------------------------------------------------------------
-// Simple orbit camera (mouse drag to orbit, wheel to zoom)
-//------------------------------------------------------------------------------
 typedef struct {
     Vector3 target;
-    float yaw;      // radians, around Y
-    float pitch;    // radians, clamped to avoid flipping over the poles
-    float distance; // orbit radius
+    float yaw;
+    float pitch;  
+    float distance; 
 } OrbitCam;
 
-// Builds a camera-ray basis (origin + forward/right/up) from the orbit params.
 static void OrbitCamBasis(const OrbitCam *cam, Vector3 *ro, Vector3 *forward, Vector3 *right, Vector3 *up)
 {
     float cy = cosf(cam->yaw),   sy = sinf(cam->yaw);
     float cp = cosf(cam->pitch), sp = sinf(cam->pitch);
 
-    // Direction from the camera position TO the target.
     Vector3 dir = { cy * cp, sp, sy * cp };
 
     Vector3 pos = {
@@ -122,15 +82,11 @@ int main(void)
     SetConfigFlags(FLAG_WINDOW_RESIZABLE | FLAG_VSYNC_HINT);
     InitWindow(initialWidth, initialHeight, "Accumulation Path Tracer (C + raylib)");
 
-    // Path tracing is expensive per-pixel; let the GPU/driver pace us via
-    // vsync rather than a fixed low target FPS, so we accumulate as fast as
-    // the hardware allows.
     SetTargetFPS(0);
 
     Shader pathShader    = LoadShader(0, "resources/shaders/pathtrace.fs");
     Shader displayShader = LoadShader(0, "resources/shaders/display.fs");
 
-    // --- pathtrace.fs uniforms ---
     int locResolution = GetShaderLocation(pathShader, "u_resolution");
     int locFrame      = GetShaderLocation(pathShader, "u_frame");
     int locTime       = GetShaderLocation(pathShader, "u_time");
@@ -140,7 +96,6 @@ int main(void)
     int locUp         = GetShaderLocation(pathShader, "u_up");
     int locFov        = GetShaderLocation(pathShader, "u_fov");
 
-    // --- display.fs uniforms ---
     int locDispResolution  = GetShaderLocation(displayShader, "u_resolution");
     int locSampleCount     = GetShaderLocation(displayShader, "u_sampleCount");
 
@@ -149,15 +104,13 @@ int main(void)
 
     RenderTexture2D accum = LoadRenderTextureFloat(width, height);
 
-    // Orbit camera, initialized to roughly match the original fixed
-    // ro = vec3(0, 0.5, -6) looking toward +Z.
     OrbitCam cam = { 0 };
     cam.target   = (Vector3){ 0.0f, 1.0f, 0.0f };
-    cam.yaw      = 1.5708f;  // ~+Z
+    cam.yaw      = 1.5708f;
     cam.pitch    = -0.06f;
     cam.distance = 6.6f;
 
-    const float fov = 1.5f; // matches the "1.4" in the original vec3(sampleUV, 1.4)
+    const float fov = 1.5f;
 
     int  sampleCount = 0;
     bool dragging    = false;
@@ -170,7 +123,6 @@ int main(void)
 
         bool cameraChanged = false;
 
-        // --- Orbit controls: left-drag to rotate, wheel to zoom ---
         if (IsMouseButtonPressed(MOUSE_BUTTON_LEFT))
         {
             dragging  = true;
@@ -205,7 +157,6 @@ int main(void)
             cameraChanged = true;
         }
 
-        // --- Handle window resize: reallocate the float accumulation buffer ---
         if (newWidth != width || newHeight != height)
         {
             width  = newWidth;
@@ -216,7 +167,6 @@ int main(void)
             cameraChanged = true;
         }
 
-        // Any camera movement invalidates everything accumulated so far.
         if (cameraChanged) sampleCount = 0;
 
         Vector3 ro, forward, right, up;
@@ -224,7 +174,6 @@ int main(void)
 
         sampleCount++;
 
-        // --- Update pathtrace.fs uniforms ---
         float res[2] = { (float)width, (float)height };
         SetShaderValue(pathShader, locResolution, res, SHADER_UNIFORM_VEC2);
         SetShaderValue(pathShader, locFrame, &sampleCount, SHADER_UNIFORM_INT);
@@ -236,25 +185,19 @@ int main(void)
         SetShaderValue(pathShader, locUp, &up, SHADER_UNIFORM_VEC3);
         SetShaderValue(pathShader, locFov, &fov, SHADER_UNIFORM_FLOAT);
 
-        // --- Accumulation pass: render ONE new noisy sample and add it in ---
         BeginTextureMode(accum);
             if (sampleCount == 1)
             {
-                // Fresh start (camera just moved, or first frame): clear the sum.
                 ClearBackground(BLANK);
             }
 
-            BeginBlendMode(BLEND_ADDITIVE); // src + dst, accumulated in a float buffer -> no clamping/banding
+            BeginBlendMode(BLEND_ADDITIVE);
                 BeginShaderMode(pathShader);
-                    // A full-screen rectangle is enough to invoke the fragment
-                    // shader for every pixel; raylib draws shapes with a 1x1
-                    // white texture, so the shader's own math produces the image.
                     DrawRectangle(0, 0, width, height, WHITE);
                 EndShaderMode();
             EndBlendMode();
         EndTextureMode();
 
-        // --- Display pass: divide the sum by sampleCount and tonemap ---
         BeginDrawing();
             ClearBackground(BLACK);
 
@@ -264,8 +207,6 @@ int main(void)
             SetShaderValue(displayShader, locSampleCount, &sc, SHADER_UNIFORM_FLOAT);
 
             BeginShaderMode(displayShader);
-                // Render textures are stored flipped vertically in OpenGL;
-                // draw with a negative-height source rect to flip it back.
                 DrawTextureRec(
                     accum.texture,
                     (Rectangle){ 0, 0, (float)accum.texture.width, -(float)accum.texture.height },
